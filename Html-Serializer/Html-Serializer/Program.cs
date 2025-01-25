@@ -1,5 +1,4 @@
 ﻿using Html_Serializer;
-using HtmlSerializer;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -13,8 +12,8 @@ static void BuildTree(List<string> htmLines, HtmlElement rootElement)
     string tagName, remainingContent;
 
     //סוגי תגיות
-    var AllTags = HtmlHelper.Instance.AllTags;
-    var SelfClosingTags = HtmlHelper.Instance.SelfClosingTags;
+    var AllTags = HtmlHelper.Instance.Tags;
+    var SelfClosingTags = HtmlHelper.Instance.VoidTags;
 
     foreach (var line in htmLines.Skip(1))
     {
@@ -71,9 +70,7 @@ static void BuildTree(List<string> htmLines, HtmlElement rootElement)
 var html = await Load(" https://hebrewbooks.org/beis ");
 
 // ניקוי רווחים מיותרים
-//string cleanHtml = new Regex("[\\t\\n\\r\\v\\f]").Replace(html, "");
-//cleanHtml = Regex.Replace(cleanHtml, @"[ ]{2,}", "");
-//var htmLines = new Regex("<(.*?)>").Split(cleanHtml).Where(s => s.Length > 0);
+
 var cleanHtml = new Regex("\\s").Replace(html, " ");
 var tagMatches = Regex.Matches(cleanHtml, @"<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>|([^<]+)").Where(l => !String.IsNullOrWhiteSpace(l.Value));
 
