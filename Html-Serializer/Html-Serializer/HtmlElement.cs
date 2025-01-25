@@ -19,32 +19,7 @@ namespace Html_Serializer
         public HtmlElement Parent { get; set; }
         public List<HtmlElement> Children { get; set; } = new List<HtmlElement>();
 
-        private const string IdAttribute = "id";
-        private const string ClassAttribute = "class";
-
-        public void AddAttributes(string attribute)
-        {
-            if (!attribute.Contains('=')) return;
-            string[] key_value = attribute.Split('=');
-            string key = key_value[0];
-            string value = string.Join(" ", key_value.Skip(1));
-            if (key.Equals(IdAttribute))
-            {
-                Id = value.Trim('"');
-            }
-            else if (key.Equals(ClassAttribute))
-            {
-                string[] classes = value.Split(' ');
-                foreach (var clas in classes)
-                {
-                    Classes.Add(clas.Trim('"'));
-                }
-            }
-            else
-                Attributes.Add(key, value.Trim('"'));
-        }
-
-
+        
         public IEnumerable<HtmlElement> Descendants()
         {
             Queue<HtmlElement> queue = new Queue<HtmlElement>();
@@ -69,69 +44,57 @@ namespace Html_Serializer
                 current = current.Parent;
             }
         }
-        public IEnumerable<HtmlElement> Query(Selector selector)
+
+
+        public HashSet<HtmlElement> FindElementsBySelector(Selector selector)
         {
-            var set = new HashSet<HtmlElement>();
-            FindElementBySelector(selector, set, this.Descendants());
-            return set;
+            HashSet<HtmlElement> res = new HashSet<HtmlElement>();
+            ReFindElementsBySelector(this, selector, res);
+            return res;
         }
-
-
-        private void FindElementBySelector(Selector selector, HashSet<HtmlElement> list, IEnumerable<HtmlElement> elements)
+        private void ReFindElementsBySelector(HtmlElement currentElement, Selector selector, HashSet<HtmlElement> res)
         {
-            if (selector == null || elements == null || !elements.Any())
-                return;
-
-            foreach (var item in elements)
+            foreach (var element in currentElement.Descendants())
             {
-                if (CheckSelector(item, selector))
+                if (Same(element, selector))
                 {
                     if (selector.Child == null)
-                        list.Add(item);
-                    FindElementBySelector(selector.Child, list, item.Descendants());
+                    {
+                        res.Add(element);
+                        continue;
+                    }
+                    ReFindElementsBySelector(element, selector.Child, res);
                 }
             }
         }
 
-        public bool CheckSelector(HtmlElement element, Selector selector)
+        private bool Same(HtmlElement currentElement, Selector selector)
         {
-            if (selector.Id != null && !selector.Id.Equals(element.Id))
+            if (!string.IsNullOrEmpty(selector.TagName) && currentElement.Name != selector.TagName)
                 return false;
-            if (selector.TagName != null && selector.TagName != element.Name)
+            if (!string.IsNullOrEmpty(selector.Id) && currentElement.Id != selector.Id)
                 return false;
-            if (selector.Classes.Count > 0 && !selector.Classes.All(c => element.Classes.Contains(c)))
+            if (selector.Classes.Any() && !selector.Classes.All(c => currentElement.Classes.Contains(c)))
                 return false;
             return true;
         }
-
         public override string ToString()
         {
-            StringBuilder sb = new StringBuilder();
-            sb.AppendLine($"Name: {Name}");
-            if (Id != null) sb.AppendLine($"Id: {Id}");
-            if (Classes.Count > 0)
+            string s = "\nName: " + Name + "\n Id: " + Id + "\n";
+            foreach (string atr in Attributes.Keys)
             {
-                sb.AppendLine("Classes:")
-                    .AppendLine(string.Join(Environment.NewLine, Classes.Select(c => "\t- " + c)));
-
+                s += "[" + atr + ": " + Attributes[atr] + "] ";
             }
-            if (Attributes.Count > 0)
+            if (Classes.Count != 0)
             {
-                sb.AppendLine("Attributes: ")
-                    .AppendLine(string.Join(Environment.NewLine, Attributes.Select(attr => $"- {attr.Key}: {attr.Value}")));
-
-            }
-            if (InnerHtml.Length > 0) sb.AppendLine("InnerHTML " + InnerHtml);
-            if (Parent != null) sb.AppendLine("Parent: " + Parent.Name);
-            if (Children.Count > 0)
-            {
-                sb.AppendLine("Children: ");
-                foreach (var child in Children)
+                s += "\nClass:";
+                foreach (string class1 in Classes)
                 {
-                    sb.AppendLine("\t- " + child.Name);
+                    s += " " + class1;
                 }
             }
-            return sb.ToString();
+            s += "\nInnerHtml: " + InnerHtml;
+            return s;
         }
     }
 }

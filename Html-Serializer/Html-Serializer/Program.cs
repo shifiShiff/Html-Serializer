@@ -1,92 +1,111 @@
-﻿
-using Html_Serializer;
-
+﻿using Html_Serializer;
+using HtmlSerializer;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
-static string GetFirstWord(string str)
+static string FirstWordInString(string s)
 {
-    if (string.IsNullOrWhiteSpace(str))
-    {
-        return string.Empty;
-    }
-
-    string[] words = str.Split(new char[] { ' ', '\t', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-    return words.Length > 0 ? words[0] : string.Empty;
+    return s.Trim().Split(' ')[0];
 }
-
-static string RemoveFirstWord(string input)
+static void BuildTree(List<string> htmLines, HtmlElement rootElement)
 {
-    if (string.IsNullOrWhiteSpace(input))
+    HtmlElement currentElement = rootElement;
+    string tagName, remainingContent;
+
+    //סוגי תגיות
+    var AllTags = HtmlHelper.Instance.AllTags;
+    var SelfClosingTags = HtmlHelper.Instance.SelfClosingTags;
+
+    foreach (var line in htmLines.Skip(1))
     {
-        return string.Empty;
-    }
-
-    string[] words = input.Split(new char[] { ' ', '\t', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-    return string.Join(" ", words.Skip(1));
-}
-
-static HtmlElement CreateElementsTree(string html)
-{
-
-    var cleanHtml = Regex.Replace(html, "[\\s]", " ").Trim();
-    var htmlLines = new Regex("<(.*?)>").Split(cleanHtml).Where(s => !string.IsNullOrEmpty(s));
-
-    HtmlElement root = new HtmlElement() { Name = "root" };
-    HtmlElement current = root;
-
-    foreach (var line in htmlLines)
-    {
-        string tagName = GetFirstWord(line.Trim());
-        if (string.IsNullOrEmpty(tagName)) continue;
-        if (tagName.Equals("/html", StringComparison.OrdinalIgnoreCase))
+        if (line.StartsWith('/')) //מקרה של תגית סוגרת או סוף ה HTML 
         {
-            return root;
-        }
-        if (tagName.StartsWith("/"))
-        {
-            current = current.Parent ?? root;
-        }
-        else if (HtmlHelper.Instance.Tags.Contains(tagName))
-        {
-            HtmlElement child = new HtmlElement() { Name = tagName };
-            // Extract attributes.
-            var attributes = new Regex("([^\\s]*?)=\"(.*?)\"").Matches(RemoveFirstWord(line));
-            foreach (Match attribute in attributes)
+            if (FirstWordInString(line.Substring(1)) == "html")
             {
-                child.AddAttributes(attribute.Value);
+                rootElement = rootElement.Children[0];
+                return;
             }
-            current.Children.Add(child);
-            child.Parent = current;
-
-            if (!HtmlHelper.Instance.VoidTags.Contains(tagName))
-            {
-                current = child;
-            }
+            currentElement = currentElement.Parent;
         }
         else
         {
-            current.InnerHtml += line.Trim();
+            tagName = FirstWordInString(line);
+            if (AllTags.Contains(tagName) || SelfClosingTags.Contains(tagName)) //תגית כלשהיא
+            {
+
+                //עדכון העץ
+                HtmlElement newElement = new HtmlElement();
+                currentElement.Children.Add(newElement);
+                newElement.Parent = currentElement;
+                currentElement = newElement;
+
+                currentElement.Name = tagName;
+
+                remainingContent = line.Substring(tagName.Length).Trim();
+                var attributes = new Regex("([^\\s]*?)=\"(.*?)\"").Matches(remainingContent);
+
+                foreach (Match match in attributes) //חלוקה ל attributes
+                {
+                    if (match.Groups[1].Value == "id")
+                        currentElement.Id = match.Groups[2].Value;
+
+                    else if (match.Groups[1].Value == "class")
+                        currentElement.Classes = match.Groups[2].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+                    else //מאפיין אחר לא ID & Classes
+                        currentElement.Attributes.Add(match.Groups[1].Value, match.Groups[2].Value);
+                }
+
+                if (SelfClosingTags.Contains(tagName) || remainingContent.EndsWith('/'))
+                    currentElement = currentElement.Parent;
+
+            }
+            else // InnerHtml
+            {
+                currentElement.InnerHtml = line;
+            }
         }
     }
-    return root;
 }
 
-//var html = await Load("https://forum.netfree.link/category/1/%D7%94%D7%9B%D7%A8%D7%96%D7%95%D7%AA ");
-var html = await Load("https://chani-k.co.il/sherlok-game/");
-//var html = await Load("https://learn.malkabruk.co.il/practicode/projects/pract-2/#_3");
-//var html = await Load("https://hebrewbooks.org/beis");
+var html = await Load(" https://hebrewbooks.org/beis ");
 
+// ניקוי רווחים מיותרים
+//string cleanHtml = new Regex("[\\t\\n\\r\\v\\f]").Replace(html, "");
+//cleanHtml = Regex.Replace(cleanHtml, @"[ ]{2,}", "");
+//var htmLines = new Regex("<(.*?)>").Split(cleanHtml).Where(s => s.Length > 0);
+var cleanHtml = new Regex("\\s").Replace(html, " ");
+var tagMatches = Regex.Matches(cleanHtml, @"<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>|([^<]+)").Where(l => !String.IsNullOrWhiteSpace(l.Value));
 
-Selector selector = Selector.ConvertQuery("img #logo_copyright_img");
+var htmLines = new List<string>();
+foreach (Match item in tagMatches)
+{
+    string tag = item.Value.Trim();
+    if (tag.StartsWith('<'))
+        tag = tag.Trim('<', '>');
+    htmLines.Add(tag);
+}
 
-HtmlElement root = new HtmlElement();
-root = CreateElementsTree(html);
+//יצירת אובייקט השורש 
+HtmlElement rootElement = new HtmlElement();
 
-var result = root.Query(selector);
-result.ToList().ForEach(element => { Console.WriteLine(element.ToString()); });
+//בניית העץ
+BuildTree(htmLines, rootElement);
+
+var res = rootElement.FindElementsBySelector(Selector.ConvertToSelector("ul.nav.navbar-nav"));
+Selector selector = Selector.ConvertToSelector("div a.inactBG");
+
+HashSet<HtmlElement> elements = rootElement.FindElementsBySelector(selector);
+foreach (HtmlElement element in elements)
+{
+    Console.WriteLine(element);
+    Console.WriteLine("**********");
+}
+Console.WriteLine(elements.Count);
 
 
 Console.ReadLine();
+
 async Task<string> Load(string url)
 {
     HttpClient client = new HttpClient();
@@ -94,3 +113,5 @@ async Task<string> Load(string url)
     var html = await response.Content.ReadAsStringAsync();
     return html;
 }
+
+
